@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { useRouter, usePathname } from "next/navigation"
 import Link from "next/link"
 import { useAuth } from "@/hooks/useAuth"
+import { CacheManager } from "@/components/cache-manager"
 import { 
   LayoutDashboard, 
   MessageSquare, 
@@ -35,7 +36,7 @@ interface AdminLayoutProps {
 }
 
 export default function AdminLayout({ children }: AdminLayoutProps) {
-  const { user, loading, signOut, isAuthenticated, isAdmin } = useAuth()
+  const { user, loading, logout, isAuthenticated } = useAuth()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const router = useRouter()
   const pathname = usePathname()
@@ -44,7 +45,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     if (loading) return; // Do nothing while loading
 
     // If user is authenticated
-    if (isAuthenticated && isAdmin) {
+    if (isAuthenticated) {
       // If they are on the login page, redirect to dashboard
       if (pathname === '/admin/login') {
         router.push('/admin');
@@ -55,11 +56,11 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         router.push('/admin/login');
       }
     }
-  }, [loading, isAuthenticated, isAdmin, pathname, router]);
+  }, [loading, isAuthenticated, pathname, router]);
 
   const handleLogout = async () => {
     try {
-      await signOut()
+      await logout()
       router.push("/admin/login")
     } catch (error) {
       console.error("Logout error:", error)
@@ -77,8 +78,8 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     )
   }
 
-  // If not authenticated or not admin, show children (which should be login page)
-  if (!isAuthenticated || !isAdmin) {
+  // If not authenticated, show children (which should be login page)
+  if (!isAuthenticated) {
     // Return children (login page) without the full layout
     return (
       <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
@@ -88,8 +89,8 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     )
   }
 
-  // If we get here, user is authenticated and is admin
-  console.log('User authenticated and is admin, showing admin layout')
+  // If we get here, user is authenticated
+  console.log('User authenticated, showing admin layout')
 
   const navigation = [
     { name: "Dashboard", href: "/admin", icon: LayoutDashboard },
@@ -198,26 +199,46 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
           {/* User section */}
           <div className="border-t border-white/20 p-4">
             <p className="text-center text-xs text-slate-600">
-              © {new Date().getFullYear()} GCH Servicios
+              GCH Servicios © 2024
             </p>
           </div>
         </div>
 
         {/* Main content */}
-        <div className="flex flex-1 flex-col overflow-y-auto">
-          {/* Floating mobile menu button */}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="fixed top-4 left-4 z-40 lg:hidden bg-white/80 backdrop-blur-sm border border-white/30 shadow-lg hover:bg-white/90"
-            onClick={() => setSidebarOpen(true)}
-          >
-            <Menu className="h-5 w-5" />
-          </Button>
+        <div className="flex flex-1 flex-col overflow-hidden">
+          {/* Top bar */}
+          <header className="flex h-16 shrink-0 items-center gap-x-4 border-b border-white/20 bg-white/30 px-4 backdrop-blur-xl sm:gap-x-6 sm:px-6 lg:px-8">
+            <Button
+              type="button"
+              className="-m-2.5 p-2.5 text-slate-700 lg:hidden"
+              onClick={() => setSidebarOpen(true)}
+            >
+              <span className="sr-only">Open sidebar</span>
+              <Menu className="h-6 w-6" aria-hidden="true" />
+            </Button>
+
+            <div className="flex flex-1 gap-x-4 self-stretch lg:gap-x-6">
+              <div className="flex items-center gap-x-4 lg:gap-x-6">
+                <div className="hidden lg:block lg:h-6 lg:w-px lg:bg-white/20" />
+                <div className="flex items-center gap-x-4 lg:gap-x-6">
+                  <div className="flex items-center gap-x-2">
+                    <span className="text-sm font-medium text-slate-700">
+                      {currentPage?.name || 'Dashboard'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </header>
 
           {/* Page content */}
-          <main className="flex-1 p-6 lg:p-8">
-            {children}
+          <main className="flex-1 overflow-y-auto">
+            <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
+              {/* Cache Manager */}
+              <CacheManager showAlways={true} className="mb-6" />
+              
+              {children}
+            </div>
           </main>
         </div>
       </div>

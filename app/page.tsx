@@ -14,6 +14,7 @@ import { SiteHeader } from "@/components/site-header"
 import { SiteFooter } from "@/components/site-footer"
 import { FeaturedProjects } from "@/components/featured-projects"
 import { HeroScrollButton } from "@/components/hero-scroll-button"
+import { TestimonialsSection } from "@/components/testimonials-section"
 
 export default function Home() {
   return (
@@ -205,88 +206,7 @@ export default function Home() {
         <FeaturedProjects />
 
         {/* Testimonios */}
-        <section id="testimonios" className="py-16 md:py-24 relative overflow-hidden bg-white">
-          <div className="absolute top-0 right-0 w-1/3 h-full bg-gradient-to-l from-gch-blue/5 to-transparent -z-0"></div>
-          <div className="container relative z-10">
-            <div className="grid lg:grid-cols-2 lg:gap-16 lg:items-center">
-              <AnimatedSection animation="slide-right" className="text-center lg:text-left">
-                <h2 className="font-serif text-3xl font-bold tracking-tight md:text-4xl text-gch-gray">
-                  Lo que dicen nuestros clientes
-              </h2>
-                <p className="mt-4 text-muted-foreground text-lg">
-                  La confianza y satisfacción de nuestros clientes son nuestro mayor orgullo.
-                </p>
-                <div className="mt-8 flex justify-center lg:justify-start gap-4">
-                  <Button
-                    variant="outline"
-                    className="rounded-full h-12 w-12 p-0 border-gch-blue/50 text-gch-blue hover:bg-gch-blue/10"
-                  >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="24"
-                  height="24"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                      className="h-5 w-5"
-                >
-                      <path d="M18 15l-6-6-6 6" />
-                </svg>
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="rounded-full h-12 w-12 p-0 border-gch-blue/50 text-gch-blue hover:bg-gch-blue/10"
-                  >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="24"
-                  height="24"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                      className="h-5 w-5"
-                >
-                      <path d="M6 9l6 6 6-6" />
-                </svg>
-                  </Button>
-                </div>
-              </AnimatedSection>
-
-              <AnimatedSection animation="slide-right" delay={0.2}>
-                <div className="mt-10 lg:mt-0 p-8 rounded-xl bg-gradient-to-br from-gch-blue to-gch-blue/90 shadow-2xl shadow-gch-blue/20 text-white relative">
-                  <div className="absolute -top-6 -left-6 w-20 h-20 text-gch-yellow/20">
-                    <svg fill="currentColor" viewBox="0 0 32 32">
-                      <path d="M16 2C8.2 2 2 8.2 2 16s6.2 14 14 14 14-6.2 14-14S23.8 2 16 2zm0 26C9.4 28 4 22.6 4 16S9.4 4 16 4s12 5.4 12 12-5.4 12-12 12z" />
-                      <path d="M16 10c-3.3 0-6 2.7-6 6s2.7 6 6 6 6-2.7 6-6-2.7-6-6-6zm0 10c-2.2 0-4-1.8-4-4s1.8-4 4-4 4 1.8 4 4-1.8 4-4 4z" />
-                </svg>
-                  </div>
-                  <div className="space-y-6">
-                    <div>
-                      <h3 className="font-serif text-xl font-semibold mb-4 text-gch-gray">Testimonio 1</h3>
-                      <p className="text-sm text-muted-foreground">
-                        "El equipo supo plasmar exactamente lo que queríamos. Remodelaron nuestra sala y cocina y el resultado
-                        fue de revista. ¡Superaron nuestras expectativas!"
-                </p>
-                    </div>
-                    <div className="flex items-center">
-                  <div className="h-10 w-10 rounded-full bg-gch-yellow/50" />
-                  <div className="ml-3">
-                        <p className="text-sm font-medium">María L.</p>
-                        <p className="text-xs text-muted-foreground">Cliente residencial</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </AnimatedSection>
-              </div>
-          </div>
-        </section>
+        <TestimonialsSection />
 
         {/* Blog */}
         <section className="py-16 md:py-24">

@@ -9,7 +9,8 @@ import {
   Star, 
   User,
   MessageSquare,
-  Calendar
+  Calendar,
+  Loader2
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -19,18 +20,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
-
-interface Testimonial {
-  id: number
-  name: string
-  role: string
-  company: string
-  content: string
-  rating: number
-  status: "active" | "inactive" | "pending"
-  image: string
-  createdAt: string
-}
+import { testimonialsService } from "@/lib/database-supabase"
+import type { Testimonial } from "@/lib/database-supabase"
 
 export default function TestimonialsPage() {
   const [testimonials, setTestimonials] = useState<Testimonial[]>([])
@@ -38,71 +29,70 @@ export default function TestimonialsPage() {
   const [filterStatus, setFilterStatus] = useState("all")
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [editingTestimonial, setEditingTestimonial] = useState<Testimonial | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
-  // Mock data
+  // Fetch testimonials from database
   useEffect(() => {
-    setTestimonials([
-      {
-        id: 1,
-        name: "María González",
-        role: "CEO",
-        company: "TechCorp",
-        content: "Excelente servicio y profesionalismo. GCH transformó completamente nuestro espacio de trabajo con su expertise en diseño y construcción.",
-        rating: 5,
-        status: "active",
-        image: "https://images.unsplash.com/photo-1494790108755-2616b612b786?w=150",
-        createdAt: "2024-01-15"
-      },
-      {
-        id: 2,
-        name: "Carlos Rodríguez",
-        role: "Director",
-        company: "Inmobiliaria Premium",
-        content: "La calidad del trabajo superó nuestras expectativas. Definitivamente los recomendaremos para futuros proyectos.",
-        rating: 5,
-        status: "active",
-        image: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150",
-        createdAt: "2024-01-10"
-      },
-      {
-        id: 3,
-        name: "Ana Martínez",
-        role: "Propietaria",
-        company: "Restaurante El Buen Sabor",
-        content: "GCH nos ayudó a crear el ambiente perfecto para nuestro restaurante. El resultado fue espectacular.",
-        rating: 4,
-        status: "pending",
-        image: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150",
-        createdAt: "2024-01-05"
-      }
-    ])
+    fetchTestimonials()
   }, [])
 
-  const filteredTestimonials = testimonials.filter(testimonial => {
-    const matchesSearch = testimonial.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         testimonial.company.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesFilter = filterStatus === "all" || testimonial.status === filterStatus
-    return matchesSearch && matchesFilter
-  })
-
-  const handleAddTestimonial = (testimonialData: Omit<Testimonial, "id" | "createdAt">) => {
-    const newTestimonial: Testimonial = {
-      ...testimonialData,
-      id: testimonials.length + 1,
-      createdAt: new Date().toISOString().split('T')[0]
+  const fetchTestimonials = async () => {
+    try {
+      setIsLoading(true)
+      const filters: { status?: string; search?: string } = {}
+      
+      if (filterStatus !== "all") {
+        filters.status = filterStatus
+      }
+      
+      if (searchTerm) {
+        filters.search = searchTerm
+      }
+      
+      const data = await testimonialsService.getAll(filters)
+      setTestimonials(data)
+    } catch (error) {
+      console.error('Error fetching testimonials:', error)
+      toast.error("Error al cargar los testimonios")
+    } finally {
+      setIsLoading(false)
     }
-    setTestimonials([...testimonials, newTestimonial])
-    setIsAddDialogOpen(false)
-    toast.success("Testimonio agregado exitosamente")
+  }
+
+  // Refetch when filters change
+  useEffect(() => {
+    fetchTestimonials()
+  }, [filterStatus, searchTerm])
+
+  const handleAddTestimonial = async (testimonialData: Omit<Testimonial, "id" | "created_at" | "updated_at">) => {
+    try {
+      setIsSubmitting(true)
+      await testimonialsService.create(testimonialData)
+      await fetchTestimonials() // Refetch to get updated data
+      setIsAddDialogOpen(false)
+      toast.success("Testimonio agregado exitosamente")
+    } catch (error) {
+      console.error('Error adding testimonial:', error)
+      toast.error("Error al agregar el testimonio")
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const handleEditTestimonial = (testimonial: Testimonial) => {
     setEditingTestimonial(testimonial)
   }
 
-  const handleDeleteTestimonial = (id: number) => {
-    setTestimonials(testimonials.filter(t => t.id !== id))
-    toast.success("Testimonio eliminado exitosamente")
+  const handleDeleteTestimonial = async (id: string) => {
+    try {
+      await testimonialsService.delete(id)
+      await fetchTestimonials() // Refetch to get updated data
+      toast.success("Testimonio eliminado exitosamente")
+    } catch (error) {
+      console.error('Error deleting testimonial:', error)
+      toast.error("Error al eliminar el testimonio")
+    }
   }
 
   const getStatusColor = (status: string) => {
@@ -121,6 +111,15 @@ export default function TestimonialsPage() {
         className={`h-4 w-4 ${i < rating ? 'text-gch-yellow fill-current' : 'text-gray-300'}`}
       />
     ))
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin text-gch-blue" />
+        <span className="ml-2 text-gray-600">Cargando testimonios...</span>
+      </div>
+    )
   }
 
   return (
@@ -145,7 +144,7 @@ export default function TestimonialsPage() {
                 Completa la información del testimonio
               </DialogDescription>
             </DialogHeader>
-            <TestimonialForm onSubmit={handleAddTestimonial} />
+            <TestimonialForm onSubmit={handleAddTestimonial} isSubmitting={isSubmitting} />
           </DialogContent>
         </Dialog>
       </div>
@@ -181,65 +180,107 @@ export default function TestimonialsPage() {
       </Card>
 
       {/* Testimonials Grid */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {filteredTestimonials.map((testimonial) => (
-          <Card key={testimonial.id} className="bg-white/40 backdrop-blur-xl border-white/30 shadow-xl hover:shadow-2xl transition-all duration-300">
-            <CardHeader className="pb-3">
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <CardTitle className="text-gray-900 text-lg">{testimonial.name}</CardTitle>
-                  <CardDescription className="text-gray-600">{testimonial.role} en {testimonial.company}</CardDescription>
-                </div>
-                <Badge className={`${getStatusColor(testimonial.status)} text-white`}>
-                  {testimonial.status}
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center space-x-3">
-                <div className="w-12 h-12 rounded-full overflow-hidden bg-gray-200">
-                  <img 
-                    src={testimonial.image} 
-                    alt={testimonial.name}
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-center space-x-1 mb-1">
-                    {renderStars(testimonial.rating)}
+      {testimonials.length === 0 ? (
+        <Card className="bg-white/40 backdrop-blur-xl border-white/30 shadow-xl">
+          <CardContent className="pt-12 pb-12 text-center">
+            <MessageSquare className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No hay testimonios</h3>
+            <p className="text-gray-600 mb-4">
+              {searchTerm || filterStatus !== "all" 
+                ? "No se encontraron testimonios con los filtros aplicados"
+                : "Aún no se han agregado testimonios. ¡Agrega el primero!"
+              }
+            </p>
+            {!searchTerm && filterStatus === "all" && (
+              <Button 
+                onClick={() => setIsAddDialogOpen(true)}
+                className="bg-gch-yellow text-black hover:bg-gch-yellow/90"
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Agregar Primer Testimonio
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {testimonials.map((testimonial) => (
+            <Card key={testimonial.id} className="bg-white/40 backdrop-blur-xl border-white/30 shadow-xl hover:shadow-2xl transition-all duration-300">
+              <CardHeader className="pb-3">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <CardTitle className="text-gray-900 text-lg">{testimonial.name}</CardTitle>
+                    <CardDescription className="text-gray-600">{testimonial.role} en {testimonial.company}</CardDescription>
                   </div>
-                  <p className="text-xs text-gray-500">{testimonial.createdAt}</p>
+                  <Badge className={`${getStatusColor(testimonial.status)} text-white`}>
+                    {testimonial.status}
+                  </Badge>
                 </div>
-              </div>
-              <p className="text-gray-700 text-sm line-clamp-4">{testimonial.content}</p>
-              <div className="flex gap-2 pt-2">
-                <Button size="sm" variant="outline" className="flex-1 bg-white/50 border-white/30 text-gray-700 hover:bg-white/70">
-                  <MessageSquare className="h-4 w-4 mr-1" />
-                  Ver
-                </Button>
-                <Button size="sm" variant="outline" className="bg-white/50 border-white/30 text-gray-700 hover:bg-white/70">
-                  <Edit className="h-4 w-4" />
-                </Button>
-                <Button size="sm" variant="outline" className="bg-white/50 border-white/30 text-red-600 hover:bg-red-50">
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center space-x-3">
+                  <div className="w-12 h-12 rounded-full overflow-hidden bg-gray-200">
+                    {testimonial.image ? (
+                      <img 
+                        src={testimonial.image} 
+                        alt={testimonial.name}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-gray-300 flex items-center justify-center">
+                        <User className="h-6 w-6 text-gray-500" />
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center space-x-1 mb-1">
+                      {renderStars(testimonial.rating)}
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      {new Date(testimonial.created_at).toLocaleDateString('es-ES')}
+                    </p>
+                  </div>
+                </div>
+                <p className="text-gray-700 text-sm line-clamp-4">{testimonial.content}</p>
+                <div className="flex gap-2 pt-2">
+                  <Button size="sm" variant="outline" className="flex-1 bg-white/50 border-white/30 text-gray-700 hover:bg-white/70">
+                    <MessageSquare className="h-4 w-4 mr-1" />
+                    Ver
+                  </Button>
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    className="bg-white/50 border-white/30 text-gray-700 hover:bg-white/70"
+                    onClick={() => handleEditTestimonial(testimonial)}
+                  >
+                    <Edit className="h-4 w-4" />
+                  </Button>
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    className="bg-white/50 border-white/30 text-red-600 hover:bg-red-50"
+                    onClick={() => handleDeleteTestimonial(testimonial.id)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
 
-function TestimonialForm({ onSubmit }: { onSubmit: (data: any) => void }) {
+function TestimonialForm({ onSubmit, isSubmitting }: { onSubmit: (data: any) => void; isSubmitting: boolean }) {
   const [formData, setFormData] = useState({
     name: "",
     role: "",
     company: "",
     content: "",
     rating: 5,
-    status: "active",
+    status: "active" as "active" | "inactive" | "pending",
     image: ""
   })
 
@@ -258,6 +299,7 @@ function TestimonialForm({ onSubmit }: { onSubmit: (data: any) => void }) {
             onChange={(e) => setFormData({...formData, name: e.target.value})}
             className="mt-1 bg-white/50 border-white/30 text-gray-900"
             required
+            disabled={isSubmitting}
           />
         </div>
         <div>
@@ -267,6 +309,7 @@ function TestimonialForm({ onSubmit }: { onSubmit: (data: any) => void }) {
             onChange={(e) => setFormData({...formData, role: e.target.value})}
             className="mt-1 bg-white/50 border-white/30 text-gray-900"
             required
+            disabled={isSubmitting}
           />
         </div>
       </div>
@@ -277,6 +320,7 @@ function TestimonialForm({ onSubmit }: { onSubmit: (data: any) => void }) {
           onChange={(e) => setFormData({...formData, company: e.target.value})}
           className="mt-1 bg-white/50 border-white/30 text-gray-900"
           required
+          disabled={isSubmitting}
         />
       </div>
       <div>
@@ -287,12 +331,13 @@ function TestimonialForm({ onSubmit }: { onSubmit: (data: any) => void }) {
           className="mt-1 bg-white/50 border-white/30 text-gray-900"
           rows={4}
           required
+          disabled={isSubmitting}
         />
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div>
           <label className="text-sm font-medium text-gray-700">Calificación</label>
-          <Select value={formData.rating.toString()} onValueChange={(value) => setFormData({...formData, rating: parseInt(value)})}>
+          <Select value={formData.rating.toString()} onValueChange={(value) => setFormData({...formData, rating: parseInt(value)})} disabled={isSubmitting}>
             <SelectTrigger className="mt-1 bg-white/50 border-white/30 text-gray-900">
               <SelectValue />
             </SelectTrigger>
@@ -307,7 +352,7 @@ function TestimonialForm({ onSubmit }: { onSubmit: (data: any) => void }) {
         </div>
         <div>
           <label className="text-sm font-medium text-gray-700">Estado</label>
-          <Select value={formData.status} onValueChange={(value) => setFormData({...formData, status: value})}>
+          <Select value={formData.status} onValueChange={(value) => setFormData({...formData, status: value as "active" | "inactive" | "pending"})} disabled={isSubmitting}>
             <SelectTrigger className="mt-1 bg-white/50 border-white/30 text-gray-900">
               <SelectValue />
             </SelectTrigger>
@@ -325,14 +370,22 @@ function TestimonialForm({ onSubmit }: { onSubmit: (data: any) => void }) {
             onChange={(e) => setFormData({...formData, image: e.target.value})}
             className="mt-1 bg-white/50 border-white/30 text-gray-900"
             placeholder="https://..."
+            disabled={isSubmitting}
           />
         </div>
       </div>
       <div className="flex gap-2">
-        <Button type="submit" className="bg-gch-yellow text-black hover:bg-gch-yellow/90">
-          Guardar Testimonio
+        <Button type="submit" className="bg-gch-yellow text-black hover:bg-gch-yellow/90" disabled={isSubmitting}>
+          {isSubmitting ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Guardando...
+            </>
+          ) : (
+            "Guardar Testimonio"
+          )}
         </Button>
-        <Button type="button" variant="outline" className="bg-white/50 border-white/30 text-gray-700 hover:bg-white/70">
+        <Button type="button" variant="outline" className="bg-white/50 border-white/30 text-gray-700 hover:bg-white/70" disabled={isSubmitting}>
           Cancelar
         </Button>
       </div>
