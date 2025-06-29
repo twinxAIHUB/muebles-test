@@ -1,7 +1,5 @@
 import { supabase } from './supabase'
 import { adminService, type AdminUser } from './database-supabase'
-import { createClient } from '@supabase/supabase-js'
-import { cache } from 'react'
 
 export interface AuthUser {
   id: string
@@ -208,46 +206,4 @@ class AuthService {
   }
 }
 
-export const authService = new AuthService()
-
-// Cache management utilities
-export const clearAuthCache = () => {
-  if (typeof window !== 'undefined') {
-    // Clear localStorage
-    localStorage.removeItem('supabase.auth.token')
-    localStorage.removeItem('supabase.auth.expires_at')
-    localStorage.removeItem('supabase.auth.refresh_token')
-    
-    // Clear sessionStorage
-    sessionStorage.clear()
-    
-    // Clear any cached data
-    if ('caches' in window) {
-      caches.keys().then(names => {
-        names.forEach(name => {
-          caches.delete(name)
-        })
-      })
-    }
-    
-    // Force reload if on login page
-    if (window.location.pathname.includes('/admin/login')) {
-      window.location.reload()
-    }
-  }
-}
-
-export const isCacheStale = () => {
-  if (typeof window === 'undefined') return false
-  
-  const token = localStorage.getItem('supabase.auth.token')
-  const expiresAt = localStorage.getItem('supabase.auth.expires_at')
-  
-  if (!token || !expiresAt) return true
-  
-  const expiryTime = parseInt(expiresAt)
-  const currentTime = Date.now()
-  
-  // Consider cache stale if token expires in next 5 minutes or is already expired
-  return currentTime >= (expiryTime - 300000)
-} 
+export const authService = new AuthService() 

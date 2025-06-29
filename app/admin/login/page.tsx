@@ -13,12 +13,12 @@ import { Loader2, Eye, EyeOff, Shield, UserPlus, RefreshCw, AlertTriangle } from
 
 export default function AdminLoginPage() {
   const router = useRouter()
-  const { user, loading, error, cacheIssues, login, forceClearCache } = useAuth()
+  const { signIn, createAdminAccount, loading, error, initialized, flushCache, resetAuthState } = useAuth()
   
   const [activeTab, setActiveTab] = useState('login')
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
-  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isFlushingCache, setIsFlushingCache] = useState(false)
   
   // Login form state
   const [loginData, setLoginData] = useState({
@@ -38,100 +38,69 @@ export default function AdminLoginPage() {
   // Show timeout warning if loading takes too long
   const [showTimeoutWarning, setShowTimeoutWarning] = useState(false)
 
-  // Auto-redirect if already authenticated
-  useEffect(() => {
-    if (user && !loading) {
-      router.push('/admin')
-    }
-  }, [user, loading, router])
-
-  // Show cache alert if cache issues detected
-  useEffect(() => {
-    if (cacheIssues) {
-      setShowTimeoutWarning(true)
-    }
-  }, [cacheIssues])
-
-  // Auto-clear cache on page load if there are issues
-  useEffect(() => {
-    if (cacheIssues) {
-      console.log('Cache issues detected, auto-clearing...')
-      forceClearCache()
-    }
-  }, [cacheIssues, forceClearCache])
-
   useEffect(() => {
     const timeoutId = setTimeout(() => {
-      if (loading) {
+      if (loading && !initialized) {
         setShowTimeoutWarning(true)
       }
     }, 8000) // Show warning after 8 seconds
 
     return () => clearTimeout(timeoutId)
-  }, [loading])
+  }, [loading, initialized])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-    setIsSubmitting(true)
     try {
-      const result = await login(loginData.email, loginData.password)
-      if (result.success) {
-        router.push('/admin')
-      }
+      await signIn(loginData.email, loginData.password)
+      router.push('/admin')
     } catch (error) {
-      console.error('Login error:', error)
-    } finally {
-      setIsSubmitting(false)
+      // Error is handled by the useAuth hook
     }
   }
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault()
-    setIsSubmitting(true)
     
     if (registerData.password !== registerData.confirmPassword) {
-      setIsSubmitting(false)
       return
     }
     
     try {
-      // For now, just show an alert that registration is not implemented
-      alert('Registration is not implemented yet. Please contact the administrator.')
+      await createAdminAccount(
+        registerData.email, 
+        registerData.password, 
+        registerData.name, 
+        registerData.role
+      )
+      router.push('/admin')
     } catch (error) {
-      console.error('Registration error:', error)
-    } finally {
-      setIsSubmitting(false)
+      // Error is handled by the useAuth hook
     }
   }
 
-  const handleClearCache = async () => {
-    setIsSubmitting(true)
+  const handleFlushCache = async () => {
+    setIsFlushingCache(true)
     try {
-      forceClearCache()
+      await flushCache()
       setShowTimeoutWarning(false)
       // Reload the page after cache flush
       window.location.reload()
     } catch (error) {
-      console.error('Failed to clear cache:', error)
+      console.error('Failed to flush cache:', error)
     } finally {
-      setIsSubmitting(false)
+      setIsFlushingCache(false)
     }
   }
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <Card className="w-full max-w-md">
-          <CardContent className="flex flex-col items-center justify-center p-8">
-            <Loader2 className="h-8 w-8 animate-spin text-blue-600 mb-4" />
-            <p className="text-gray-600">Verificando autenticación...</p>
-            {cacheIssues && (
-              <p className="text-sm text-orange-600 mt-2">Detectando problemas de caché...</p>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-    )
+  const handleResetAuthState = async () => {
+    setIsFlushingCache(true)
+    try {
+      await resetAuthState()
+    } catch (error) {
+      console.error('Failed to reset auth state:', error)
+    } finally {
+      setIsFlushingCache(false)
+    }
   }
 
   return (
@@ -161,106 +130,111 @@ export default function AdminLoginPage() {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={handleClearCache}
-                      disabled={isSubmitting}
+                      onClick={handleFlushCache}
+                      disabled={isFlushingCache}
                       className="ml-2 border-orange-300 text-orange-700 hover:bg-orange-100"
                     >
-                      {isSubmitting ? (
+                      {isFlushingCache ? (
                         <Loader2 className="w-3 h-3 animate-spin" />
                       ) : (
                         <RefreshCw className="w-3 h-3" />
                       )}
-                      Clear Cache
                     </Button>
                   </div>
                 </AlertDescription>
               </Alert>
             )}
 
-            {/* Error Alert */}
-            {error && (
-              <Alert className="mb-4 border-red-200 bg-red-50">
-                <AlertTriangle className="h-4 w-4 text-red-600" />
-                <AlertDescription className="text-red-700">
-                  {error}
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={handleClearCache}
-                    className="ml-2 mt-2 border-red-300 text-red-700 hover:bg-red-100"
-                  >
-                    <RefreshCw className="w-3 h-3 mr-1" />
-                    Clear Cache & Retry
-                  </Button>
-                </AlertDescription>
-              </Alert>
+            {/* Cache Reset Button */}
+            {!loading && initialized && (
+              <div className="mb-4 text-center">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleResetAuthState}
+                  disabled={isFlushingCache}
+                  className="text-xs text-slate-500 hover:text-slate-700"
+                >
+                  {isFlushingCache ? (
+                    <>
+                      <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                      Resetting...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="w-3 h-3 mr-1" />
+                      Reset Authentication
+                    </>
+                  )}
+                </Button>
+              </div>
             )}
 
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="login">Login</TabsTrigger>
-                <TabsTrigger value="register">Register</TabsTrigger>
+              <TabsList className="grid w-full grid-cols-2 bg-slate-100/50">
+                <TabsTrigger value="login" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">
+                  <Shield className="w-4 h-4 mr-2" />
+                  Sign In
+                </TabsTrigger>
+                <TabsTrigger value="register" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">
+                  <UserPlus className="w-4 h-4 mr-2" />
+                  Create Account
+                </TabsTrigger>
               </TabsList>
 
               <TabsContent value="login" className="space-y-4 mt-6">
                 <form onSubmit={handleLogin} className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="email" className="text-slate-700 font-medium">
+                    <Label htmlFor="login-email" className="text-slate-700 font-medium">
                       Email
                     </Label>
                     <Input
-                      id="email"
+                      id="login-email"
                       type="email"
                       placeholder="admin@gchservicios.com"
                       value={loginData.email}
                       onChange={(e) => setLoginData({ ...loginData, email: e.target.value })}
                       required
-                      disabled={isSubmitting}
-                      className="border-slate-200 focus:border-blue-500"
+                      className="bg-white/50 border-slate-200 focus:border-blue-500"
+                      disabled={loading}
                     />
                   </div>
                   
                   <div className="space-y-2">
-                    <Label htmlFor="password" className="text-slate-700 font-medium">
+                    <Label htmlFor="login-password" className="text-slate-700 font-medium">
                       Password
                     </Label>
                     <div className="relative">
                       <Input
-                        id="password"
+                        id="login-password"
                         type={showPassword ? 'text' : 'password'}
                         placeholder="Enter your password"
                         value={loginData.password}
                         onChange={(e) => setLoginData({ ...loginData, password: e.target.value })}
                         required
-                        disabled={isSubmitting}
-                        className="border-slate-200 focus:border-blue-500 pr-10"
+                        className="bg-white/50 border-slate-200 focus:border-blue-500 pr-10"
+                        disabled={loading}
                       />
-                      <Button
+                      <button
                         type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
                         onClick={() => setShowPassword(!showPassword)}
-                        disabled={isSubmitting}
+                        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                        disabled={loading}
                       >
-                        {showPassword ? (
-                          <EyeOff className="h-4 w-4 text-slate-500" />
-                        ) : (
-                          <Eye className="h-4 w-4 text-slate-500" />
-                        )}
-                      </Button>
+                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
                     </div>
                   </div>
-                  
-                  <Button
-                    type="submit"
-                    className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-all duration-200 shadow-md hover:shadow-lg"
-                    disabled={isSubmitting || !loginData.email || !loginData.password}
+
+                  <Button 
+                    type="submit" 
+                    className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white"
+                    disabled={loading || !initialized}
                   >
-                    {isSubmitting ? (
+                    {loading ? (
                       <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Signing in...
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Signing In...
                       </>
                     ) : (
                       'Sign In'
@@ -282,11 +256,11 @@ export default function AdminLoginPage() {
                       value={registerData.name}
                       onChange={(e) => setRegisterData({ ...registerData, name: e.target.value })}
                       required
-                      disabled={isSubmitting}
-                      className="border-slate-200 focus:border-blue-500"
+                      className="bg-white/50 border-slate-200 focus:border-blue-500"
+                      disabled={loading}
                     />
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="register-email" className="text-slate-700 font-medium">
                       Email
@@ -298,9 +272,26 @@ export default function AdminLoginPage() {
                       value={registerData.email}
                       onChange={(e) => setRegisterData({ ...registerData, email: e.target.value })}
                       required
-                      disabled={isSubmitting}
-                      className="border-slate-200 focus:border-blue-500"
+                      className="bg-white/50 border-slate-200 focus:border-blue-500"
+                      disabled={loading}
                     />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="register-role" className="text-slate-700 font-medium">
+                      Role
+                    </Label>
+                    <select
+                      id="register-role"
+                      value={registerData.role}
+                      onChange={(e) => setRegisterData({ ...registerData, role: e.target.value as any })}
+                      className="w-full px-3 py-2 bg-white/50 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      disabled={loading}
+                    >
+                      <option value="admin">Admin</option>
+                      <option value="super_admin">Super Admin</option>
+                      <option value="editor">Editor</option>
+                    </select>
                   </div>
                   
                   <div className="space-y-2">
@@ -315,26 +306,20 @@ export default function AdminLoginPage() {
                         value={registerData.password}
                         onChange={(e) => setRegisterData({ ...registerData, password: e.target.value })}
                         required
-                        disabled={isSubmitting}
-                        className="border-slate-200 focus:border-blue-500 pr-10"
+                        className="bg-white/50 border-slate-200 focus:border-blue-500 pr-10"
+                        disabled={loading}
                       />
-                      <Button
+                      <button
                         type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
                         onClick={() => setShowPassword(!showPassword)}
-                        disabled={isSubmitting}
+                        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                        disabled={loading}
                       >
-                        {showPassword ? (
-                          <EyeOff className="h-4 w-4 text-slate-500" />
-                        ) : (
-                          <Eye className="h-4 w-4 text-slate-500" />
-                        )}
-                      </Button>
+                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
                     </div>
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="register-confirm-password" className="text-slate-700 font-medium">
                       Confirm Password
@@ -347,60 +332,52 @@ export default function AdminLoginPage() {
                         value={registerData.confirmPassword}
                         onChange={(e) => setRegisterData({ ...registerData, confirmPassword: e.target.value })}
                         required
-                        disabled={isSubmitting}
-                        className="border-slate-200 focus:border-blue-500 pr-10"
+                        className={`bg-white/50 border-slate-200 focus:border-blue-500 pr-10 ${
+                          registerData.confirmPassword && registerData.password !== registerData.confirmPassword
+                            ? 'border-red-300 focus:border-red-500'
+                            : ''
+                        }`}
+                        disabled={loading}
                       />
-                      <Button
+                      <button
                         type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
                         onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                        disabled={isSubmitting}
+                        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                        disabled={loading}
                       >
-                        {showConfirmPassword ? (
-                          <EyeOff className="h-4 w-4 text-slate-500" />
-                        ) : (
-                          <Eye className="h-4 w-4 text-slate-500" />
-                        )}
-                      </Button>
+                        {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
                     </div>
+                    {registerData.confirmPassword && registerData.password !== registerData.confirmPassword && (
+                      <p className="text-sm text-red-500">Passwords do not match</p>
+                    )}
                   </div>
-                  
-                  <Button
-                    type="submit"
-                    className="w-full bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-medium py-2 px-4 rounded-lg transition-all duration-200 shadow-md hover:shadow-lg"
-                    disabled={isSubmitting || !registerData.name || !registerData.email || !registerData.password || !registerData.confirmPassword || registerData.password !== registerData.confirmPassword}
+
+                  <Button 
+                    type="submit" 
+                    className="w-full bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white"
+                    disabled={loading || registerData.password !== registerData.confirmPassword || !initialized}
                   >
-                    {isSubmitting ? (
+                    {loading ? (
                       <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Creating account...
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Creating Account...
                       </>
                     ) : (
-                      <>
-                        <UserPlus className="mr-2 h-4 w-4" />
-                        Create Account
-                      </>
+                      'Create Admin Account'
                     )}
                   </Button>
                 </form>
               </TabsContent>
             </Tabs>
 
-            {/* Cache Management Section */}
-            <div className="mt-6 pt-4 border-t border-slate-200">
-              <Button
-                variant="outline"
-                onClick={handleClearCache}
-                className="w-full border-slate-300 text-slate-700 hover:bg-slate-50"
-                size="sm"
-                disabled={isSubmitting}
-              >
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Clear Cache & Reload
-              </Button>
-            </div>
+            {error && (
+              <Alert className="mt-4 border-red-200 bg-red-50">
+                <AlertDescription className="text-red-700">
+                  {error}
+                </AlertDescription>
+              </Alert>
+            )}
           </CardContent>
         </Card>
       </div>
