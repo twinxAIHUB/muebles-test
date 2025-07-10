@@ -34,6 +34,7 @@ interface Message {
       action: string
     }>
   }
+  projects?: any[] // <-- add this field
 }
 
 function StructuredContent({ content }: { content: Message['structuredContent'] }) {
@@ -95,8 +96,144 @@ function StructuredContent({ content }: { content: Message['structuredContent'] 
   )
 }
 
-function MessageContent({ content, structuredContent, isBot }: { content: string; structuredContent?: Message['structuredContent']; isBot?: boolean }) {
+// Improved project list parser for bot Markdown/text output (robust to dashes and spacing)
+function parseProjectsFromMarkdown(text: string) {
+  const projects: any[] = [];
+  // Split on any 'Description:' (with or without dashes/spaces)
+  const blocks = text.split(/(^|\n)(-\s*)?Description:/i).filter(Boolean);
+  for (let i = 1; i < blocks.length; i++) { // skip the first block (text before first project)
+    let block = blocks[i].trim();
+    // Description is up to first 'Category:' or 'Images:' or end
+    let descMatch = block.match(/^([\s\S]*?)(Category:|Images?:|$)/i);
+    let description = descMatch ? descMatch[1].replace(/\n/g, ' ').trim() : '';
+    // Category is up to first 'Images:' or end
+    let catMatch = block.match(/Category:\s*([\s\S]*?)(Images?:|$)/i);
+    let category = catMatch ? catMatch[1].replace(/\n/g, ' ').trim() : '';
+    // Images: collect all valid image URLs in this block
+    const images: string[] = [];
+    const imgRegex = /!\[.*?\]\((.*?)\)/g;
+    let imgMatch;
+    while ((imgMatch = imgRegex.exec(block))) {
+      if (imgMatch[1] && imgMatch[1].trim() !== '') images.push(imgMatch[1]);
+    }
+    projects.push({ description, category, images });
+  }
+  // Only require description, not category
+  return projects.filter(p => p.description);
+}
+
+// New parser for '![Image]()' + 'Title:' numbered list format
+function parseProjectsFromTitleListMarkdown(text: string) {
+  // Find all blocks that start with ![Image ...]() followed by a numbered list with 'Title:'
+  const lines = text.split(/\n/);
+  const projects: any[] = [];
+  let current: any = null;
+  for (let i = 0; i < lines.length; i++) {
+    const imgMatch = lines[i].match(/^!\[.*?\]\((.*?)\)/);
+    if (imgMatch) {
+      if (current) projects.push(current);
+      current = { images: [imgMatch[1]], description: '', category: '' };
+      continue;
+    }
+    const titleMatch = lines[i].match(/^\d+\.\s*Title:\s*(.*)$/i);
+    if (titleMatch && current) {
+      current.description = titleMatch[1].trim();
+      continue;
+    }
+    // If another image line is found, push current and start new
+    if (/^!\[.*?\]\((.*?)\)/.test(lines[i]) && current) {
+      projects.push(current);
+      current = null;
+    }
+  }
+  if (current) projects.push(current);
+  // Filter out empty
+  return projects.filter(p => p.description);
+}
+
+function ProjectCardsMarkdown({ projects }: { projects: any[] }) {
+  if (!projects.length) return null;
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 mt-2">
+      {projects.map((project, idx) => (
+        <div key={idx} className="bg-white rounded-2xl shadow-lg border border-gray-100 flex flex-col overflow-hidden transition hover:shadow-xl min-h-[260px]">
+          {/* Show image if available, otherwise show a beautiful placeholder */}
+          {project.images && project.images.length > 0 && project.images[0] ? (
+            <img src={project.images[0]} alt={project.description} className="w-full h-36 object-cover bg-gray-100" />
+          ) : (
+            <div className="w-full h-36 flex items-center justify-center bg-gradient-to-br from-blue-100 to-yellow-100 text-gray-400 text-4xl">
+              <span role="img" aria-label="placeholder">🖼️</span>
+            </div>
+          )}
+          <div className="p-5 flex-1 flex flex-col gap-2">
+            <h3 className="font-semibold text-gch-blue text-lg truncate mb-1">{project.description || 'Sin título'}</h3>
+            {project.category && (
+              <div className="flex gap-2 flex-wrap mt-1">
+                <span className="text-xs bg-gch-blue/10 text-gch-blue border-gch-blue/20 px-2 py-1 rounded-full">
+                  {project.category}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// In MessageContent, always prefer card UI for project lists or available projects
+function MessageContent({ content, structuredContent, isBot, hideProjectList, showAllProjects, setShowAllProjects, projectsFromApi }: { content: string; structuredContent?: Message['structuredContent']; isBot?: boolean; hideProjectList?: boolean; showAllProjects?: boolean; setShowAllProjects?: (v: boolean) => void; projectsFromApi?: any[] }) {
   let cleanContent = content;
+
+  // ROBUST FALLBACK: Try both parsers for 'proyectos' and render cards if either returns projects
+  if (isBot && content.toLowerCase().includes('proyectos')) {
+    const projectsA = parseProjectsFromMarkdown(content);
+    const projectsB = parseProjectsFromTitleListMarkdown(content);
+    const projects = projectsA.length > 0 ? projectsA : projectsB;
+    if (projects.length > 0) {
+      // Only render cards, do not render anything else
+      return <ProjectCardsMarkdown projects={projects} />;
+    }
+  }
+
+  // Force card rendering if the message is about projects and projectsFromApi is available
+  if (isBot && projectsFromApi && projectsFromApi.length > 0 && content.toLowerCase().includes('proyectos')) {
+    return <ProjectCardsMarkdown projects={projectsFromApi} />;
+  }
+
+  // More permissive detection: treat any bot message with at least two 'Description:' or 'Category:' or 'Images:' as a project list
+  const projectPattern = /(-\s*)?Description:/gi;
+  const categoryPattern = /Category:/gi;
+  const imagesPattern = /Images?:/gi;
+  const titlePattern = /^!\[.*?\]\s*$/m;
+  const numberedTitlePattern = /^\d+\.\s*Title:/m;
+  const projectCount = (content.match(projectPattern) || []).length;
+  const categoryCount = (content.match(categoryPattern) || []).length;
+  const imagesCount = (content.match(imagesPattern) || []).length;
+  // Detect both formats
+  const isProjectMarkdownList = isBot && ((projectCount >= 1 && categoryCount >= 1) || imagesCount >= 2);
+  const isTitleList = isBot && titlePattern.test(content) && numberedTitlePattern.test(content);
+  if (isProjectMarkdownList) {
+    const projects = parseProjectsFromMarkdown(content);
+    if (projects.length > 0) return <ProjectCardsMarkdown projects={projects} />;
+  }
+  if (isTitleList) {
+    const projects = parseProjectsFromTitleListMarkdown(content);
+    if (projects.length > 0) return <ProjectCardsMarkdown projects={projects} />;
+  }
+
+  // NEW: Prefer structured projects if present
+  if (projectsFromApi && projectsFromApi.length > 0) {
+    return <ProjectCardsMarkdown projects={projectsFromApi} />;
+  }
+
+  // Fallback: if this is the first bot message and projects are available in state, render them as cards
+  // (Assume projects are passed as a prop or available via context/hook if needed)
+  // Example usage: <MessageContent ... projects={projects} />
+  // Uncomment and adapt if you want to always show cards on first load:
+  // if (isBot && projects && projects.length && content.toLowerCase().includes('proyectos')) {
+  //   return <ProjectCardsMarkdown projects={projects} />;
+  // }
 
   if (isBot) {
     // Remove asterisks
@@ -112,6 +249,13 @@ function MessageContent({ content, structuredContent, isBot }: { content: string
     cleanContent = cleanContent.replace(/\n{2,}/g, '\n').trim();
     // Remove lines like '1. ![Image 1]()' or '2. ![Image 2]()' (empty Markdown image links only)
     cleanContent = cleanContent.replace(/^\d+\.\s*!\[.*?\]\(\s*\)\s*$/gim, '').replace(/\n{2,}/g, '\n').trim();
+    // If hideProjectList is true, remove project list blocks (titles, images, and lists)
+    if (hideProjectList) {
+      // Remove lines like 'Title: ...', 'Images:', '- ![Image]()', and numbered/bullet lists
+      cleanContent = cleanContent.replace(/(^Title:.*$|^Images?:.*$|^-\s*!\[.*?\]\(.*?\)$|^\d+\.\s*!\[.*?\]\(.*?\)$|^\d+\.\s.*$|^-\s.*$)/gim, '');
+      // Remove extra blank lines again
+      cleanContent = cleanContent.replace(/\n{2,}/g, '\n').trim();
+    }
   }
 
   // Extract all valid image URLs (not just Markdown)
@@ -225,6 +369,72 @@ function MessageContent({ content, structuredContent, isBot }: { content: string
   )
 }
 
+// Update the webhook function to use the new URL
+async function triggerGoHighLevelWebhook(payload: any) {
+  try {
+    // Log the payload right before sending
+    console.log('Webhook payload:', payload);
+    const response = await fetch(
+      "https://services.leadconnectorhq.com/hooks/25b51W5t3pdeLhP4hzEs/webhook-trigger/c8457ab7-1663-412b-a8a8-72d83e844b5a",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }
+    );
+    return await response.json();
+  } catch (err) {
+    console.error("Failed to trigger GoHighLevel webhook", err);
+  }
+}
+
+// Helper to extract user info from chat history
+function extractUserInfo(messages: Message[]) {
+  let name = '';
+  let email = '';
+  let phone = '';
+  // Go through messages in reverse to get the latest values
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (msg.type === 'user') {
+      // Email regex
+      if (!email && /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i.test(msg.content)) {
+        email = msg.content.match(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i)?.[0] || '';
+      }
+      // Phone regex (simple, can be improved)
+      if (!phone && /(?:\+?\d{1,3}[ -]?)?(?:\(?\d{2,3}\)?[ -]?)?\d{3,4}[ -]?\d{4}/.test(msg.content)) {
+        phone = msg.content.match(/(?:\+?\d{1,3}[ -]?)?(?:\(?\d{2,3}\)?[ -]?)?\d{3,4}[ -]?\d{4}/)?.[0] || '';
+      }
+      // Name: look for 'my name is', 'I am', 'this is', or just a single word if the bot just asked for name
+      if (!name) {
+        if (/my name is/i.test(msg.content)) {
+          name = msg.content.split(/my name is/i)[1]?.trim().split(' ')[0] || '';
+        } else if (/i am/i.test(msg.content)) {
+          name = msg.content.split(/i am/i)[1]?.trim().split(' ')[0] || '';
+        } else if (/this is/i.test(msg.content)) {
+          name = msg.content.split(/this is/i)[1]?.trim().split(' ')[0] || '';
+        } else if (msg.content.split(' ').length === 1 && !email && !phone) {
+          // If the message is a single word and not an email/phone, treat as name
+          name = msg.content.trim();
+        }
+      }
+    }
+    if (name && email && phone) break;
+  }
+  return { name, email, phone };
+}
+
+// Helper to get or create a unique session ID (client-only, per tab)
+function getOrCreateSessionId() {
+  if (typeof window === 'undefined') return '';
+  let sessionId = sessionStorage.getItem('chatbot_session_id');
+  if (!sessionId) {
+    sessionId = crypto.randomUUID();
+    sessionStorage.setItem('chatbot_session_id', sessionId);
+  }
+  return sessionId;
+}
+
 export default function ChatbotPage() {
   const [messages, setMessages] = useState<Message[]>([])
   const [inputMessage, setInputMessage] = useState("")
@@ -237,6 +447,9 @@ export default function ChatbotPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const [showAllProjects, setShowAllProjects] = useState(false)
+  const [sessionId, setSessionId] = useState(''); // Always '' on first render (hydration-safe)
+  const [sessionReady, setSessionReady] = useState(false);
 
   useEffect(() => {
     setMessages([
@@ -278,6 +491,13 @@ export default function ChatbotPage() {
   useEffect(() => {
     scrollToBottom()
   }, [messages])
+
+  useEffect(() => {
+    // Only runs on client
+    const id = getOrCreateSessionId();
+    setSessionId(id);
+    setSessionReady(true);
+  }, []);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -336,15 +556,14 @@ export default function ChatbotPage() {
 
     try {
       const response = await sendToN8n(userMessage, attachments)
-      
       const botMessage: Message = {
         id: (Date.now() + 1).toString(),
         type: 'bot',
         content: response.message || 'Gracias por tu mensaje. Te responderé pronto.',
         timestamp: new Date(),
-        structuredContent: response.structuredContent
+        structuredContent: response.structuredContent,
+        projects: response.projects // <-- add this
       }
-
       setMessages(prev => [...prev, botMessage])
 
       if (inputMessage.toLowerCase().includes('proyectos') || 
@@ -353,6 +572,22 @@ export default function ChatbotPage() {
           inputMessage.toLowerCase().includes('database')) {
         setShowProjectsTable(true)
         console.log('Showing projects table. Projects count:', projects.length)
+      }
+
+      // Always trigger webhook for every user message if sessionId is set
+      if (sessionId) {
+        const { name, email, phone } = extractUserInfo([...messages, userMessage]);
+        if (name && email) {
+          const payload = {
+            sessionId,
+            name,
+            email,
+            phone,
+            message: userMessage.content,
+          };
+          console.log('Webhook payload:', payload);
+          await triggerGoHighLevelWebhook(payload);
+        }
       }
     } catch (error) {
       console.error("Error sending message:", error)
@@ -410,6 +645,7 @@ export default function ChatbotPage() {
 
       let message = 'Gracias por tu mensaje. Te responderé pronto.'
       let structuredContent = undefined
+      let projects: any[] = [] // Initialize projects
       
       if (data.message) {
         message = data.message
@@ -438,7 +674,12 @@ export default function ChatbotPage() {
         structuredContent = data.data.structuredContent
       }
 
-      return { message, structuredContent }
+      if (data.projects) { // <-- add this
+        projects = data.projects
+        console.log('Using data.projects:', projects.length)
+      }
+
+      return { message, structuredContent, projects }
     } catch (error) {
       console.error('Error in sendToN8n:', error)
       throw error
@@ -473,6 +714,14 @@ export default function ChatbotPage() {
     "Necesito información sobre muebles de melamina",
     "Mostrar base de datos de proyectos"
   ]
+
+  if (!sessionReady || !sessionId) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-gray-500 text-lg">Cargando chat...</div>
+      </div>
+    );
+  }
 
   return (
     <div className={cn(
@@ -565,7 +814,8 @@ export default function ChatbotPage() {
                             : "bg-white border border-gray-200/50 text-gray-900"
                         )}
                       >
-                        <MessageContent content={message.content} structuredContent={message.structuredContent} isBot={message.type === 'bot'} />
+                        {/* Always use MessageContent for bot messages, so project lists are rendered as cards */}
+                        <MessageContent content={message.content} structuredContent={message.structuredContent} isBot={message.type === 'bot'} hideProjectList={showProjectsTable && message.type === 'bot'} showAllProjects={showAllProjects} setShowAllProjects={setShowAllProjects} projectsFromApi={message.projects} />
                         
                         {message.attachments && message.attachments.map((attachment, index) => (
                           <div key={index} className="mt-3">
@@ -768,38 +1018,41 @@ export default function ChatbotPage() {
                             <strong>Debug:</strong> {projects.length} proyectos cargados
                           </p>
                         </div>
-                        <Table>
-                          <TableHeader>
-                            <TableRow className="border-gray-200/50">
-                              <TableHead className="text-xs font-semibold text-gray-600">Título</TableHead>
-                              <TableHead className="text-xs font-semibold text-gray-600">Categoría</TableHead>
-                              <TableHead className="text-xs font-semibold text-gray-600">Estado</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {projects.slice(0, 10).map((project) => (
-                              <TableRow key={project.id} className="border-gray-100 hover:bg-gray-50/50 transition-colors">
-                                <TableCell className="font-medium text-sm">
-                                  {project.title || 'Sin título'}
-                                </TableCell>
-                                <TableCell>
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                          {(showAllProjects ? projects : projects.slice(0, 3)).map((project) => (
+                            <div key={project.id} className="bg-white rounded-xl shadow border border-gray-100 flex flex-col overflow-hidden">
+                              {project.images && project.images.length > 0 && project.images[0] && (
+                                <img
+                                  src={project.images[0]}
+                                  alt={project.title || 'Imagen de proyecto'}
+                                  className="w-full h-32 object-cover"
+                                />
+                              )}
+                              <div className="p-4 flex-1 flex flex-col gap-2">
+                                <h3 className="font-semibold text-gch-blue text-base truncate">{project.title || 'Sin título'}</h3>
+                                <div className="flex gap-2 flex-wrap">
                                   <Badge variant="secondary" className="text-xs bg-gch-blue/10 text-gch-blue border-gch-blue/20">
                                     {project.main_category || 'N/A'}
                                   </Badge>
-                                </TableCell>
-                                <TableCell>
                                   <Badge variant="outline" className="text-xs bg-gch-yellow/10 text-gch-yellow border-gch-yellow/20">
                                     {project.sub_category || 'N/A'}
                                   </Badge>
-                                </TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                        {projects.length > 10 && (
-                          <p className="text-xs text-muted-foreground mt-4 text-center">
-                            Mostrando 10 de {projects.length} proyectos
-                          </p>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        {projects.length > 3 && (
+                          <div className="flex justify-center mt-4">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setShowAllProjects((prev) => !prev)}
+                              className="text-xs border-gray-300 hover:border-gch-blue hover:bg-gch-blue/5"
+                            >
+                              {showAllProjects ? 'Ver menos' : `Ver más (${projects.length - 3})`}
+                            </Button>
+                          </div>
                         )}
                       </>
                     )}

@@ -133,12 +133,23 @@ export async function POST(request: NextRequest) {
       structuredContent = n8nData.data.structuredContent
     }
 
+    // Add: Always include projects if user asks for projects
+    let projectsList: { description: string; category: string; images: string[] }[] = [];
+    if (message && typeof message === 'string' && message.toLowerCase().includes('proyectos')) {
+      projectsList = projects.map((p: any) => ({
+        description: p.description,
+        category: [p.main_category, p.sub_category].filter(Boolean).join(' / '),
+        images: p.images || []
+      }));
+    }
+
     console.log('Sending response to client:', responseMessage)
 
     return NextResponse.json({
       success: true,
       message: responseMessage,
       structuredContent,
+      projects: projectsList,
       data: n8nData
     })
 
