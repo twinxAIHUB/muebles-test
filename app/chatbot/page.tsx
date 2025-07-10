@@ -186,7 +186,13 @@ function MessageContent({ content, structuredContent, isBot, hideProjectList, sh
   let cleanContent = content;
 
   // ROBUST FALLBACK: Try both parsers for 'proyectos' and render cards if either returns projects
-  if (isBot && content.toLowerCase().includes('proyectos')) {
+  if (
+    isBot &&
+    (
+      content.toLowerCase().includes('proyectos') ||
+      content.toLowerCase().includes('project')
+    )
+  ) {
     const projectsA = parseProjectsFromMarkdown(content);
     const projectsB = parseProjectsFromTitleListMarkdown(content);
     const projects = projectsA.length > 0 ? projectsA : projectsB;

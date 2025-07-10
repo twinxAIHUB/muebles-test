@@ -673,20 +673,31 @@ export const uploadService = {
   async uploadImage(file: File, path: string = 'images'): Promise<string> {
     try {
       const fileExt = file.name.split('.').pop()
-      const fileName = `${Date.now()}.${fileExt}`
+      const fileName = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${fileExt}`
       const filePath = `${path}/${fileName}`
 
+      // Check if file already exists (optional, Supabase will error if duplicate)
+      // If you want to allow overwrites, add upsert: true to upload options
+      console.log('Uploading to:', filePath)
       const { data, error } = await supabase.storage
         .from('uploads')
-        .upload(filePath, file)
+        .upload(filePath, file, { upsert: false })
 
-      if (error) throw error
+      if (error) {
+        console.error('Upload error:', error, JSON.stringify(error));
+        throw error;
+      }
 
-      const { data: { publicUrl } } = supabase.storage
+      const { data: publicData } = supabase.storage
         .from('uploads')
         .getPublicUrl(filePath)
 
-      return publicUrl
+      if (!publicData || !publicData.publicUrl) {
+        throw new Error('No public URL returned from Supabase')
+      }
+
+      console.log('Public URL:', publicData.publicUrl)
+      return publicData.publicUrl
     } catch (error) {
       console.error('Error uploading image:', error)
       throw error

@@ -301,12 +301,14 @@ function ProjectForm({
     if (!files || files.length === 0) return;
 
     setIsUploading(true);
+    console.log("Uploading files:", files);
     const uploadPromises = Array.from(files).map(file => 
       uploadService.uploadImage(file, `projects/${Date.now()}_${file.name}`)
     );
 
     try {
       const uploadedUrls = await Promise.all(uploadPromises);
+      console.log("Uploaded image URLs:", uploadedUrls);
       setFormData(prev => ({ ...prev, images: [...prev.images, ...uploadedUrls] }));
       toast.success(`${files.length} imagen(es) subida(s) con éxito`);
     } catch (error) {
@@ -434,7 +436,7 @@ function ProjectForm({
 
       <div className="flex justify-end gap-2 pt-4">
         <Button type="button" variant="ghost" onClick={onClose}>Cancelar</Button>
-        <Button type="submit" className="bg-gch-blue text-white">Guardar Proyecto</Button>
+        <button type="submit" className="bg-gch-blue text-white px-4 py-2 rounded disabled:opacity-50" disabled={isUploading}>Guardar Proyecto</button>
       </div>
     </form>
   )
